@@ -1,0 +1,482 @@
+%----------ЗАПРОСЫ------------%
+
+---------------1----------------
+CREATE TABLE server (
+    server_id SERIAL PRIMARY KEY,
+    server_name VARCHAR(50) NOT NULL,
+    region VARCHAR(50),
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+---------------2----------------
+CREATE TABLE character_class (
+    class_id SERIAL PRIMARY KEY,
+    class_name VARCHAR(50) NOT NULL,
+    description TEXT
+);
+
+----------------3---------------
+CREATE TABLE location (
+    location_id SERIAL PRIMARY KEY,
+    location_name VARCHAR(50) NOT NULL,
+    description TEXT,
+    min_level INTEGER DEFAULT 1 CHECK (min_level >= 1),
+    is_pvp BOOLEAN DEFAULT FALSE
+);
+
+----------------4------------------
+CREATE TABLE player_character (
+    character_id SERIAL PRIMARY KEY,
+    server_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    location_id INTEGER NOT NULL,
+    
+    character_name VARCHAR(50) NOT NULL UNIQUE,
+    level INTEGER NOT NULL DEFAULT 1 CHECK (level >= 1),
+    experience INTEGER NOT NULL DEFAULT 0 CHECK (experience >= 0),
+    is_moderator BOOLEAN NOT NULL DEFAULT FALSE,
+
+    -- Внешние ключи
+    CONSTRAINT fk_character_server FOREIGN KEY (server_id)
+        REFERENCES server(server_id) ON DELETE CASCADE,
+
+    CONSTRAINT fk_character_class FOREIGN KEY (class_id)
+        REFERENCES character_class(class_id) ON DELETE RESTRICT,
+
+    CONSTRAINT fk_character_location FOREIGN KEY (location_id)
+        REFERENCES location(location_id) ON DELETE SET NULL
+);
+
+
+---------------5-----------------
+CREATE TABLE item (
+    item_id SERIAL PRIMARY KEY,
+    item_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    item_type VARCHAR(30) NOT NULL CHECK (item_type IN ('weapon', 'armor', 'artifact', 'misc')),
+    required_level INTEGER DEFAULT 1 CHECK (required_level >= 1),
+    rarity VARCHAR(20) CHECK (rarity IN ('common', 'uncommon', 'rare', 'epic', 'legendary')),
+    is_tradeable BOOLEAN DEFAULT TRUE,
+    sell_price INTEGER DEFAULT 0 CHECK (sell_price >= 0),
+
+    -- Оружие
+    damage INTEGER CHECK (damage >= 0),
+    attack_speed REAL CHECK (attack_speed >= 0),
+    damage_type VARCHAR(20),
+
+    -- Броня
+    armor_slot VARCHAR(20),
+    defense INTEGER CHECK (defense >= 0),
+    magic_resistance INTEGER CHECK (magic_resistance >= 0),
+
+    -- Общее
+    durability INTEGER DEFAULT 100 CHECK (durability >= 0),
+    special_effects TEXT
+);
+
+---------------6-----------------
+CREATE TABLE mob (
+    mob_id SERIAL PRIMARY KEY,
+    location_id INTEGER NOT NULL,
+    
+    mob_name VARCHAR(50) NOT NULL,
+    level INTEGER NOT NULL CHECK (level >= 1),
+    health INTEGER NOT NULL CHECK (health > 0),
+    attack_power INTEGER NOT NULL CHECK (attack_power >= 0),
+
+    CONSTRAINT fk_mob_location FOREIGN KEY (location_id)
+        REFERENCES location(location_id) ON DELETE CASCADE
+);
+
+-------------------7--------------------
+CREATE TABLE dungeon (
+    dungeon_id SERIAL PRIMARY KEY,
+    location_id INTEGER NOT NULL,
+
+    dungeon_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    min_level INTEGER NOT NULL DEFAULT 1 CHECK (min_level >= 1),
+    difficulty INTEGER CHECK (difficulty BETWEEN 1 AND 10),
+
+    CONSTRAINT fk_dungeon_location FOREIGN KEY (location_id)
+        REFERENCES location(location_id) ON DELETE CASCADE
+);
+
+------------------8--------------------
+CREATE TABLE boss (
+    boss_id SERIAL PRIMARY KEY,
+    dungeon_id INTEGER NOT NULL,
+
+    boss_name VARCHAR(100) NOT NULL,
+    level INTEGER NOT NULL CHECK (level >= 1),
+    health INTEGER NOT NULL CHECK (health > 0),
+    attack_power INTEGER NOT NULL CHECK (attack_power >= 0),
+
+    CONSTRAINT fk_boss_dungeon FOREIGN KEY (dungeon_id)
+        REFERENCES dungeon(dungeon_id) ON DELETE CASCADE
+);
+
+
+-----------------9--------------------------
+CREATE TABLE mob_drop (
+    drop_id SERIAL PRIMARY KEY,
+    mob_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+
+    drop_chance REAL NOT NULL CHECK (drop_chance BETWEEN 0 AND 1),
+    min_quantity INTEGER DEFAULT 1 CHECK (min_quantity >= 1),
+    max_quantity INTEGER DEFAULT 1 CHECK (max_quantity >= min_quantity),
+
+    CONSTRAINT fk_mobdrop_mob FOREIGN KEY (mob_id)
+        REFERENCES mob(mob_id) ON DELETE CASCADE,
+    CONSTRAINT fk_mobdrop_item FOREIGN KEY (item_id)
+        REFERENCES item(item_id) ON DELETE CASCADE
+);
+
+-------------------10---------------------
+CREATE TABLE boss_drop (
+    drop_id SERIAL PRIMARY KEY,
+    boss_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+
+    drop_chance REAL NOT NULL CHECK (drop_chance BETWEEN 0 AND 1),
+    min_quantity INTEGER DEFAULT 1 CHECK (min_quantity >= 1),
+    max_quantity INTEGER DEFAULT 1 CHECK (max_quantity >= min_quantity),
+
+    CONSTRAINT fk_bossdrop_boss FOREIGN KEY (boss_id)
+        REFERENCES boss(boss_id) ON DELETE CASCADE,
+    CONSTRAINT fk_bossdrop_item FOREIGN KEY (item_id)
+        REFERENCES item(item_id) ON DELETE CASCADE
+);
+
+----------------11-----------------------
+CREATE TABLE player_item (
+    record_id SERIAL PRIMARY KEY,
+    character_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+
+    quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
+    acquired_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_playeritem_character FOREIGN KEY (character_id)
+        REFERENCES player_character(character_id) ON DELETE CASCADE,
+    CONSTRAINT fk_playeritem_item FOREIGN KEY (item_id)
+        REFERENCES item(item_id) ON DELETE CASCADE
+);
+
+--------------12-----------------
+CREATE TABLE equipment (
+    record_id SERIAL PRIMARY KEY,
+    character_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+
+    slot VARCHAR(30) NOT NULL,
+    is_equipped BOOLEAN DEFAULT TRUE,
+
+    CONSTRAINT fk_equipment_character FOREIGN KEY (character_id)
+        REFERENCES player_character(character_id) ON DELETE CASCADE,
+    CONSTRAINT fk_equipment_item FOREIGN KEY (item_id)
+        REFERENCES item(item_id) ON DELETE CASCADE
+);
+
+--------------13----------------
+CREATE TABLE passive_ability (
+    ability_id SERIAL PRIMARY KEY,
+    class_id INTEGER NOT NULL,
+
+    ability_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    effect TEXT,
+
+    CONSTRAINT fk_passiveability_class FOREIGN KEY (class_id)
+        REFERENCES character_class(class_id) ON DELETE CASCADE
+);
+
+---------------14-----------------
+CREATE TABLE active_ability (
+    ability_id SERIAL PRIMARY KEY,
+    class_id INTEGER NOT NULL,
+
+    ability_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    mana_cost INTEGER NOT NULL CHECK (mana_cost >= 0),
+    cooldown INTEGER NOT NULL CHECK (cooldown >= 0),
+
+    CONSTRAINT fk_activeability_class FOREIGN KEY (class_id)
+        REFERENCES character_class(class_id) ON DELETE CASCADE
+);
+
+%---------------ТРИГЕРЫ-------------%
+
+CREATE TABLE IF NOT EXISTS event_log (
+    log_id SERIAL PRIMARY KEY,
+    character_id INTEGER,
+    action TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+----------------1-------------------
+CREATE FUNCTION set_default_character_values()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.level := 1;
+    NEW.experience := 0;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+/////////////
+CREATE TRIGGER trg_default_character_values
+BEFORE INSERT ON player_character
+FOR EACH ROW
+EXECUTE FUNCTION set_default_character_values();
+
+CREATE OR REPLACE FUNCTION set_default_character_values()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.level := 1;
+    NEW.experience := 0;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+---------------2-------------------
+CREATE FUNCTION prevent_negative_items()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.quantity < 0 THEN
+        RAISE EXCEPTION 'Нельзя добавить предмет с отрицательным количеством!';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_prevent_negative_items
+BEFORE INSERT OR UPDATE ON player_item
+FOR EACH ROW
+EXECUTE FUNCTION prevent_negative_items();
+
+-----------------3----------------------
+CREATE FUNCTION prevent_negative_items()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.quantity < 0 THEN
+        RAISE EXCEPTION 'Нельзя добавить предмет с отрицательным количеством!';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_prevent_negative_items
+BEFORE INSERT OR UPDATE ON player_item
+FOR EACH ROW
+EXECUTE FUNCTION prevent_negative_items();
+
+----------------4---------------------
+CREATE FUNCTION give_starter_item()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO player_item (character_id, item_id, quantity)
+    VALUES (NEW.character_id, 1, 1);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_give_starter_item
+AFTER INSERT ON player_character
+FOR EACH ROW
+EXECUTE FUNCTION give_starter_item();
+
+--------------5---------------------
+CREATE FUNCTION log_level_up()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.level > OLD.level THEN
+        INSERT INTO event_log(character_id, action)
+        VALUES (NEW.character_id, CONCAT('Уровень повышен до ', NEW.level));
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_log_level_up
+AFTER UPDATE ON player_character
+FOR EACH ROW
+EXECUTE FUNCTION log_level_up();
+
+
+------------------6---------------
+CREATE FUNCTION check_equipped_item_exists()
+RETURNS TRIGGER AS $$
+DECLARE
+    item_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO item_count
+    FROM player_item
+    WHERE character_id = NEW.character_id AND item_id = NEW.item_id;
+
+    IF item_count = 0 THEN
+        RAISE EXCEPTION 'Нельзя экипировать предмет, которого нет в инвентаре';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_check_equipped_item_exists
+BEFORE INSERT ON equipment
+FOR EACH ROW
+EXECUTE FUNCTION check_equipped_item_exists();
+
+-----------------7-----------------
+CREATE FUNCTION cap_drop_chance()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.drop_chance > 1 THEN
+        NEW.drop_chance := 1;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_cap_boss_drop_chance
+BEFORE INSERT OR UPDATE ON boss_drop
+FOR EACH ROW
+EXECUTE FUNCTION cap_drop_chance();
+
+%---------СЛОЖНЫЕ ЗАПРОСЫ------------%
+
+%---------ЗАПОЛНЕНИЕ ТАБЛИЦЫ-------%
+-- Классы
+INSERT INTO character_class (class_name, description)
+VALUES 
+  ('Воин', 'Melee specialist with high defense'),
+  ('Разбойник', 'Fast attacker with daggers');
+
+-- Сервер
+INSERT INTO server (server_name, region)
+VALUES ('MMO-RPG Server 1', 'EU');
+
+-- Локации (чтобы были реальные location_id = 1)
+INSERT INTO location (location_name, min_level, is_pvp)
+VALUES ('Начальная зона', 1, FALSE);
+
+-- Предметы
+INSERT INTO item (item_name, item_type, required_level, rarity, damage, armor_slot, defense, durability)
+VALUES 
+  ('Обычный меч', 'weapon', 1, 'common', 10, NULL, NULL, 40),      -- id = 1
+  ('Броня волка', 'armor', 3, 'uncommon', NULL, 'chest', 20, 60),  -- id = 2
+  ('Алмазный меч', 'weapon', 5, 'rare', 35, NULL, NULL, 80),       -- id = 3
+  ('Кастрюля', 'armor', 4, 'uncommon', NULL, 'head', 10, 30);      -- id = 4
+
+-- Персонажи
+INSERT INTO player_character (server_id, class_id, location_id, character_name, is_moderator)
+VALUES 
+  (1, 1, 1, 'Дима2009', FALSE),
+  (1, 1, 1, 'Leha2007', FALSE);
+
+-- Инвентарь: сначала добавим нужные предметы в инвентарь
+INSERT INTO player_item (character_id, item_id, quantity)
+VALUES 
+  (1, 14, 1),
+  (1, 15, 1),
+  (2, 16, 1),
+  (2, 17, 1);
+
+-- Экипировка: теперь можно экипировать
+INSERT INTO equipment (character_id, item_id, slot, is_equipped)
+VALUES 
+  (1, 14, 'main_hand', TRUE),
+  (1, 15, 'chest', TRUE),
+  (2, 16, 'main_hand', TRUE),
+  (2, 17, 'head', TRUE);
+
+-- Подземелья
+INSERT INTO dungeon (location_id, dungeon_name, min_level, difficulty)
+VALUES 
+  (1, 'Паучье логово', 3, 4),
+  (1, 'Пещера Баузера', 5, 6);
+
+-- Боссы
+INSERT INTO boss (dungeon_id, boss_name, level, health, attack_power)
+VALUES 
+  (23, 'Королева пауков', 5, 800, 70),
+  (24, 'Паук бездны', 7, 1000, 90);
+
+
+--Дроп от боссов
+INSERT INTO boss_drop (boss_id, item_id, drop_chance, min_quantity, max_quantity)
+VALUES 
+  (5, 14, 0.25, 1, 1),
+  (6, 15, 0.5, 1, 2);
+
+---------------1----------------
+SELECT c.character_name, COUNT(pi.item_id) AS total_items
+FROM player_character c
+LEFT JOIN player_item pi ON c.character_id = pi.character_id
+GROUP BY c.character_name;
+
+---------------2------------------
+SELECT character_name, level
+FROM player_character
+ORDER BY level DESC
+LIMIT 3;
+
+---------------3------------------
+SELECT i.item_name, e.slot
+FROM equipment e
+JOIN item i ON e.item_id = i.item_id
+JOIN player_character c ON e.character_id = c.character_id
+WHERE c.character_name = 'EquippableGuy' AND e.is_equipped = true;
+
+----------------4-------------------
+SELECT l.location_name, COUNT(m.mob_id) AS mob_count
+FROM location l
+JOIN mob m ON l.location_id = m.location_id
+GROUP BY l.location_name
+HAVING COUNT(m.mob_id) > 2;
+
+--------------5------------------
+SELECT character_name, level,
+       RANK() OVER (ORDER BY level DESC) AS level_rank
+FROM player_character;
+
+------------6-------------------
+SELECT character_name
+FROM player_character
+WHERE character_id IN (
+    SELECT character_id
+    FROM player_item
+    WHERE item_id IN (
+        SELECT item_id
+        FROM item
+        WHERE rarity = 'rare'
+    )
+);
+
+---------------7-----------------
+UPDATE player_character
+SET experience = experience + 
+    CASE 
+        WHEN level < 5 THEN 500
+        WHEN level < 10 THEN 250
+        ELSE 100
+    END;
+
+--------------8-------------
+WITH equipped_weapons AS (
+    SELECT c.character_name, i.damage
+    FROM equipment e
+    JOIN item i ON e.item_id = i.item_id
+    JOIN player_character c ON e.character_id = c.character_id
+    WHERE i.item_type = 'weapon' AND e.is_equipped = true
+)
+SELECT character_name, SUM(damage) AS total_damage
+FROM equipped_weapons
+GROUP BY character_name;
+
+
+
+
